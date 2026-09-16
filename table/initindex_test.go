@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/dgraph-io/badger/v4/pb"
 	"github.com/dgraph-io/badger/v4/y"
@@ -45,8 +44,8 @@ func newTestTable(data []byte) *Table {
 
 func TestInitIndexFooterValidation(t *testing.T) {
 	// A non-empty, well-formed checksum so the checksumLen check and
-	// proto.Unmarshal both pass and we can reach the indexLen check.
-	validChecksum, err := proto.Marshal(&pb.Checksum{Sum: 1})
+	// UnmarshalVT both pass and we can reach the indexLen check.
+	validChecksum, err := (&pb.Checksum{Sum: 1}).MarshalVT()
 	require.NoError(t, err)
 	checksumLen := uint32(len(validChecksum))
 
@@ -128,10 +127,10 @@ func TestInitIndexFooterValidation(t *testing.T) {
 // exactly like the original issue (checksum false-pass → GetRootAsTableIndex).
 func TestInitBiggestAndSmallestRecoversFlatbuffersPanic(t *testing.T) {
 	garbageIndex := bytes.Repeat([]byte{0xFF}, 20)
-	checksum, err := proto.Marshal(&pb.Checksum{
+	checksum, err := (&pb.Checksum{
 		Algo: pb.Checksum_CRC32C,
 		Sum:  y.CalculateChecksum(garbageIndex, pb.Checksum_CRC32C),
-	})
+	}).MarshalVT()
 	require.NoError(t, err)
 	data := buildFooterData(
 		uint32(len(garbageIndex)), garbageIndex, uint32(len(checksum)), checksum)

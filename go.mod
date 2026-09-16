@@ -3,6 +3,7 @@ module github.com/dgraph-io/badger/v4
 go 1.24.0
 
 require (
+	github.com/aperturerobotics/protobuf-go-lite v0.18.0
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/dgraph-io/ristretto/v2 v2.2.0
 	github.com/dustin/go-humanize v1.0.1
@@ -13,10 +14,11 @@ require (
 	go.opentelemetry.io/contrib/zpages v0.66.0
 	go.opentelemetry.io/otel v1.41.0
 	golang.org/x/sys v0.41.0
-	google.golang.org/protobuf v1.36.7
+	google.golang.org/protobuf v1.36.11
 )
 
 require (
+	github.com/aperturerobotics/json-iterator-lite v1.1.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
