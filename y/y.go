@@ -14,7 +14,6 @@ import (
 	"io"
 	"math"
 	"os"
-	"reflect"
 	"strconv"
 	"sync"
 	"time"
@@ -274,30 +273,23 @@ func BytesToU32(b []byte) uint32 {
 	return binary.BigEndian.Uint32(b)
 }
 
-// U32SliceToBytes converts the given Uint32 slice to byte slice
+// U32SliceToBytes converts the given Uint32 slice to byte slice. The
+// returned slice aliases the input's memory; it holds native-endian words.
 func U32SliceToBytes(u32s []uint32) []byte {
 	if len(u32s) == 0 {
 		return nil
 	}
-	var b []byte
-	hdr := (*reflect.SliceHeader)(unsafe.Pointer(&b))
-	hdr.Len = len(u32s) * 4
-	hdr.Cap = hdr.Len
-	hdr.Data = uintptr(unsafe.Pointer(&u32s[0]))
-	return b
+	return unsafe.Slice((*byte)(unsafe.Pointer(&u32s[0])), len(u32s)*4)
 }
 
-// BytesToU32Slice converts the given byte slice to uint32 slice
+// BytesToU32Slice converts the given byte slice to uint32 slice. The
+// returned slice aliases the input's memory; it interprets native-endian
+// words, matching U32SliceToBytes.
 func BytesToU32Slice(b []byte) []uint32 {
 	if len(b) == 0 {
 		return nil
 	}
-	var u32s []uint32
-	hdr := (*reflect.SliceHeader)(unsafe.Pointer(&u32s))
-	hdr.Len = len(b) / 4
-	hdr.Cap = hdr.Len
-	hdr.Data = uintptr(unsafe.Pointer(&b[0]))
-	return u32s
+	return unsafe.Slice((*uint32)(unsafe.Pointer(&b[0])), len(b)/4)
 }
 
 // U64ToBytes converts the given Uint64 to bytes
@@ -312,30 +304,23 @@ func BytesToU64(b []byte) uint64 {
 	return binary.BigEndian.Uint64(b)
 }
 
-// U64SliceToBytes converts the given Uint64 slice to byte slice
+// U64SliceToBytes converts the given Uint64 slice to byte slice. The
+// returned slice aliases the input's memory; it holds native-endian words.
 func U64SliceToBytes(u64s []uint64) []byte {
 	if len(u64s) == 0 {
 		return nil
 	}
-	var b []byte
-	hdr := (*reflect.SliceHeader)(unsafe.Pointer(&b))
-	hdr.Len = len(u64s) * 8
-	hdr.Cap = hdr.Len
-	hdr.Data = uintptr(unsafe.Pointer(&u64s[0]))
-	return b
+	return unsafe.Slice((*byte)(unsafe.Pointer(&u64s[0])), len(u64s)*8)
 }
 
-// BytesToU64Slice converts the given byte slice to uint64 slice
+// BytesToU64Slice converts the given byte slice to uint64 slice. The
+// returned slice aliases the input's memory; it interprets native-endian
+// words, matching U64SliceToBytes.
 func BytesToU64Slice(b []byte) []uint64 {
 	if len(b) == 0 {
 		return nil
 	}
-	var u64s []uint64
-	hdr := (*reflect.SliceHeader)(unsafe.Pointer(&u64s))
-	hdr.Len = len(b) / 8
-	hdr.Cap = hdr.Len
-	hdr.Data = uintptr(unsafe.Pointer(&b[0]))
-	return u64s
+	return unsafe.Slice((*uint64)(unsafe.Pointer(&b[0])), len(b)/8)
 }
 
 // page struct contains one underlying buffer.

@@ -8,7 +8,6 @@ package badger
 import (
 	"fmt"
 	"os"
-	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -248,37 +247,97 @@ func parseCompression(cStr string) (options.CompressionType, int, error) {
 	return 0, 0, fmt.Errorf("ERROR: compression type (%s) invalid", cType)
 }
 
+// superFlagField names one Options field in the SuperFlag encoding and
+// carries the getters and setters for the kinds it may hold. Exactly one
+// accessor pair per field is non-nil.
+type superFlagField struct {
+	name string
+
+	getBool    func(o Options) bool
+	setBool    func(o *Options, v bool)
+	getInt64   func(o Options) int64
+	setInt64   func(o *Options, v int64)
+	getUint64  func(o Options) uint64
+	setUint64  func(o *Options, v uint64)
+	getFloat64 func(o Options) float64
+	setFloat64 func(o *Options, v float64)
+	getString  func(o Options) string
+	setString  func(o *Options, v string)
+}
+
+// superFlagFields lists every Options field that participates in the
+// SuperFlag encoding, in struct order. The list must cover exactly the fields
+// the reflect-based version iterated: exported fields whose kind is bool,
+// int, int64, uint32, uint64, float64, or string. Fields outside that set
+// stay out of both directions: Logger (interface), EncryptionKey ([]byte),
+// ExternalMagicVersion (uint16), the embedded testOnlyOptions struct, and
+// every unexported field.
+func superFlagFields() []superFlagField {
+	return []superFlagField{
+		{name: "dir", getString: func(o Options) string { return o.Dir }, setString: func(o *Options, v string) { o.Dir = v }},
+		{name: "valuedir", getString: func(o Options) string { return o.ValueDir }, setString: func(o *Options, v string) { o.ValueDir = v }},
+
+		{name: "syncwrites", getBool: func(o Options) bool { return o.SyncWrites }, setBool: func(o *Options, v bool) { o.SyncWrites = v }},
+		{name: "numversionstokeep", getInt64: func(o Options) int64 { return int64(o.NumVersionsToKeep) }, setInt64: func(o *Options, v int64) { o.NumVersionsToKeep = int(v) }},
+		{name: "readonly", getBool: func(o Options) bool { return o.ReadOnly }, setBool: func(o *Options, v bool) { o.ReadOnly = v }},
+		{name: "compression", getUint64: func(o Options) uint64 { return uint64(o.Compression) }, setUint64: func(o *Options, v uint64) { o.Compression = options.CompressionType(v) }},
+		{name: "inmemory", getBool: func(o Options) bool { return o.InMemory }, setBool: func(o *Options, v bool) { o.InMemory = v }},
+		{name: "metricsenabled", getBool: func(o Options) bool { return o.MetricsEnabled }, setBool: func(o *Options, v bool) { o.MetricsEnabled = v }},
+		{name: "numgoroutines", getInt64: func(o Options) int64 { return int64(o.NumGoroutines) }, setInt64: func(o *Options, v int64) { o.NumGoroutines = int(v) }},
+
+		{name: "memtablesize", getInt64: func(o Options) int64 { return o.MemTableSize }, setInt64: func(o *Options, v int64) { o.MemTableSize = v }},
+		{name: "basetablesize", getInt64: func(o Options) int64 { return o.BaseTableSize }, setInt64: func(o *Options, v int64) { o.BaseTableSize = v }},
+		{name: "baselevelsize", getInt64: func(o Options) int64 { return o.BaseLevelSize }, setInt64: func(o *Options, v int64) { o.BaseLevelSize = v }},
+		{name: "levelsizemultiplier", getInt64: func(o Options) int64 { return int64(o.LevelSizeMultiplier) }, setInt64: func(o *Options, v int64) { o.LevelSizeMultiplier = int(v) }},
+		{name: "tablesizemultiplier", getInt64: func(o Options) int64 { return int64(o.TableSizeMultiplier) }, setInt64: func(o *Options, v int64) { o.TableSizeMultiplier = int(v) }},
+		{name: "maxlevels", getInt64: func(o Options) int64 { return int64(o.MaxLevels) }, setInt64: func(o *Options, v int64) { o.MaxLevels = int(v) }},
+		{name: "vlogpercentile", getFloat64: func(o Options) float64 { return o.VLogPercentile }, setFloat64: func(o *Options, v float64) { o.VLogPercentile = v }},
+		{name: "valuethreshold", getInt64: func(o Options) int64 { return o.ValueThreshold }, setInt64: func(o *Options, v int64) { o.ValueThreshold = v }},
+		{name: "nummemtables", getInt64: func(o Options) int64 { return int64(o.NumMemtables) }, setInt64: func(o *Options, v int64) { o.NumMemtables = int(v) }},
+		{name: "blocksize", getInt64: func(o Options) int64 { return int64(o.BlockSize) }, setInt64: func(o *Options, v int64) { o.BlockSize = int(v) }},
+		{name: "bloomfalsepositive", getFloat64: func(o Options) float64 { return o.BloomFalsePositive }, setFloat64: func(o *Options, v float64) { o.BloomFalsePositive = v }},
+		{name: "blockcachesize", getInt64: func(o Options) int64 { return o.BlockCacheSize }, setInt64: func(o *Options, v int64) { o.BlockCacheSize = v }},
+		{name: "indexcachesize", getInt64: func(o Options) int64 { return o.IndexCacheSize }, setInt64: func(o *Options, v int64) { o.IndexCacheSize = v }},
+
+		{name: "numlevelzerotables", getInt64: func(o Options) int64 { return int64(o.NumLevelZeroTables) }, setInt64: func(o *Options, v int64) { o.NumLevelZeroTables = int(v) }},
+		{name: "numlevelzerotablesstall", getInt64: func(o Options) int64 { return int64(o.NumLevelZeroTablesStall) }, setInt64: func(o *Options, v int64) { o.NumLevelZeroTablesStall = int(v) }},
+		{name: "valuelogfilesize", getInt64: func(o Options) int64 { return o.ValueLogFileSize }, setInt64: func(o *Options, v int64) { o.ValueLogFileSize = v }},
+		{name: "valuelogmaxentries", getUint64: func(o Options) uint64 { return uint64(o.ValueLogMaxEntries) }, setUint64: func(o *Options, v uint64) { o.ValueLogMaxEntries = uint32(v) }},
+
+		{name: "numcompactors", getInt64: func(o Options) int64 { return int64(o.NumCompactors) }, setInt64: func(o *Options, v int64) { o.NumCompactors = int(v) }},
+		{name: "compactl0onclose", getBool: func(o Options) bool { return o.CompactL0OnClose }, setBool: func(o *Options, v bool) { o.CompactL0OnClose = v }},
+		{name: "lmaxcompaction", getBool: func(o Options) bool { return o.LmaxCompaction }, setBool: func(o *Options, v bool) { o.LmaxCompaction = v }},
+		{name: "zstdcompressionlevel", getInt64: func(o Options) int64 { return int64(o.ZSTDCompressionLevel) }, setInt64: func(o *Options, v int64) { o.ZSTDCompressionLevel = int(v) }},
+		{name: "verifyvaluechecksum", getBool: func(o Options) bool { return o.VerifyValueChecksum }, setBool: func(o *Options, v bool) { o.VerifyValueChecksum = v }},
+		{name: "encryptionkeyrotationduration", getInt64: func(o Options) int64 { return int64(o.EncryptionKeyRotationDuration) }, setInt64: func(o *Options, v int64) { o.EncryptionKeyRotationDuration = time.Duration(v) }},
+		{name: "bypasslockguard", getBool: func(o Options) bool { return o.BypassLockGuard }, setBool: func(o *Options, v bool) { o.BypassLockGuard = v }},
+		{name: "checksumverificationmode", getInt64: func(o Options) int64 { return int64(o.ChecksumVerificationMode) }, setInt64: func(o *Options, v int64) { o.ChecksumVerificationMode = options.ChecksumVerificationMode(v) }},
+		{name: "detectconflicts", getBool: func(o Options) bool { return o.DetectConflicts }, setBool: func(o *Options, v bool) { o.DetectConflicts = v }},
+		{name: "namespaceoffset", getInt64: func(o Options) int64 { return int64(o.NamespaceOffset) }, setInt64: func(o *Options, v int64) { o.NamespaceOffset = int(v) }},
+	}
+}
+
 // generateSuperFlag generates an identical SuperFlag string from the provided Options.
 func generateSuperFlag(options Options) string {
-	superflag := ""
-	v := reflect.ValueOf(&options).Elem()
-	optionsStruct := v.Type()
-	for i := 0; i < v.NumField(); i++ {
-		if field := v.Field(i); field.CanInterface() {
-			name := strings.ToLower(optionsStruct.Field(i).Name)
-			kind := v.Field(i).Kind()
-			switch kind {
-			case reflect.Bool:
-				superflag += name + "="
-				superflag += fmt.Sprintf("%v; ", field.Bool())
-			case reflect.Int, reflect.Int64:
-				superflag += name + "="
-				superflag += fmt.Sprintf("%v; ", field.Int())
-			case reflect.Uint32, reflect.Uint64:
-				superflag += name + "="
-				superflag += fmt.Sprintf("%v; ", field.Uint())
-			case reflect.Float64:
-				superflag += name + "="
-				superflag += fmt.Sprintf("%v; ", field.Float())
-			case reflect.String:
-				superflag += name + "="
-				superflag += fmt.Sprintf("%v; ", field.String())
-			default:
-				continue
-			}
+	var sb strings.Builder
+	for _, f := range superFlagFields() {
+		sb.WriteString(f.name)
+		sb.WriteByte('=')
+		switch {
+		case f.getBool != nil:
+			sb.WriteString(strconv.FormatBool(f.getBool(options)))
+		case f.getInt64 != nil:
+			sb.WriteString(strconv.FormatInt(f.getInt64(options), 10))
+		case f.getUint64 != nil:
+			sb.WriteString(strconv.FormatUint(f.getUint64(options), 10))
+		case f.getFloat64 != nil:
+			sb.WriteString(strconv.FormatFloat(f.getFloat64(options), 'g', -1, 64))
+		case f.getString != nil:
+			sb.WriteString(f.getString(options))
 		}
+		sb.WriteString("; ")
 	}
-	return superflag
+	return sb.String()
 }
 
 // FromSuperFlag fills Options fields for each flag within the superflag. For
@@ -300,31 +359,22 @@ func (opt Options) FromSuperFlag(superflag string) Options {
 	currentOptions += "compression=;"
 
 	flags := z.NewSuperFlag(superflag).MergeAndCheckDefault(currentOptions)
-	v := reflect.ValueOf(&opt).Elem()
-	optionsStruct := v.Type()
-	for i := 0; i < v.NumField(); i++ {
-		// only iterate over exported fields
-		if field := v.Field(i); field.CanInterface() {
-			// z.SuperFlag stores keys as lowercase, keep everything case
-			// insensitive
-			name := strings.ToLower(optionsStruct.Field(i).Name)
-			if name == "compression" {
-				// We will specially handle this later. Skip it here.
-				continue
-			}
-			kind := v.Field(i).Kind()
-			switch kind {
-			case reflect.Bool:
-				field.SetBool(flags.GetBool(name))
-			case reflect.Int, reflect.Int64:
-				field.SetInt(flags.GetInt64(name))
-			case reflect.Uint32, reflect.Uint64:
-				field.SetUint(flags.GetUint64(name))
-			case reflect.Float64:
-				field.SetFloat(flags.GetFloat64(name))
-			case reflect.String:
-				field.SetString(flags.GetString(name))
-			}
+	for _, f := range superFlagFields() {
+		if f.name == "compression" {
+			// We will specially handle this later. Skip it here.
+			continue
+		}
+		switch {
+		case f.setBool != nil:
+			f.setBool(&opt, flags.GetBool(f.name))
+		case f.setInt64 != nil:
+			f.setInt64(&opt, flags.GetInt64(f.name))
+		case f.setUint64 != nil:
+			f.setUint64(&opt, flags.GetUint64(f.name))
+		case f.setFloat64 != nil:
+			f.setFloat64(&opt, flags.GetFloat64(f.name))
+		case f.setString != nil:
+			f.setString(&opt, flags.GetString(f.name))
 		}
 	}
 
